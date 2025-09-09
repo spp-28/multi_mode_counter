@@ -73,4 +73,4 @@ clk cycle	uo_out[3:0]
 31	0000
 32	0001
 
-Note: In Up/Down mode, the counter reverses direction at 0 and 15.
+Note: In Up/Down mode, the counter reverses direction at 0 and 15
