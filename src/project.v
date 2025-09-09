@@ -9,8 +9,8 @@ module tt_um_multimode_counter (
     input  wire [7:0] ui_in,    // Not used in counter, can be ignored
     output wire [7:0] uo_out,   // Counter output (4-bit in lower nibble)
     input  wire [7:0] uio_in,   // Mode select input (use lower 2 bits)
-    output wire [7:0] uio_out,  // Not used
-    output wire [7:0] uio_oe,   // Not used
+    output wire [7:0] uio_out,  // Boundary flag (bit[0] used)
+    output wire [7:0] uio_oe,   // Drive uio_out
     input  wire       ena,      // always 1 when the design is powered
     input  wire       clk,      // clock
     input  wire       rst_n     // active low reset
@@ -18,7 +18,8 @@ module tt_um_multimode_counter (
 
   // Internal counter register
   reg [3:0] count;
-  reg       dir; // direction for up/down toggle mode
+  reg       dir;      // direction for up/down toggle mode
+  reg       at_limit; // flag when min/max reached
 
   // Mode definitions (from uio_in[1:0])
   localparam MODE_UP      = 2'b00;
@@ -27,23 +28,39 @@ module tt_um_multimode_counter (
 
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      count <= 4'b0000;
-      dir   <= 1'b1; // start counting up
+      count    <= 4'b0000;
+      dir      <= 1'b1;  // start counting up
+      at_limit <= 1'b0;
     end else begin
+      at_limit <= 1'b0; // clear flag each cycle unless boundary hit
       case (uio_in[1:0])
         MODE_UP: begin
-          count <= count + 1;
+          if (count < 4'b1111)
+            count <= count + 1;
+          else
+            at_limit <= 1'b1; // reached max, hold
         end
         MODE_DOWN: begin
-          count <= count - 1;
+          if (count > 4'b0000)
+            count <= count - 1;
+          else
+            at_limit <= 1'b1; // reached min, hold
         end
         MODE_UPDOWN: begin
           if (dir) begin
-            count <= count + 1;
-            if (count == 4'b1111) dir <= 0; // change direction at max
+            if (count < 4'b1111)
+              count <= count + 1;
+            else begin
+              dir      <= 1'b0;
+              at_limit <= 1'b1;
+            end
           end else begin
-            count <= count - 1;
-            if (count == 4'b0000) dir <= 1; // change direction at min
+            if (count > 4'b0000)
+              count <= count - 1;
+            else begin
+              dir      <= 1'b1;
+              at_limit <= 1'b1;
+            end
           end
         end
         default: begin
@@ -55,8 +72,10 @@ module tt_um_multimode_counter (
 
   // Assign counter output to uo_out (lower 4 bits)
   assign uo_out  = {4'b0000, count};
-  assign uio_out = 0;
-  assign uio_oe  = 0;
+
+  // Expose at_limit flag on uio_out[0], rest 0
+  assign uio_out = {7'b0000000, at_limit};
+  assign uio_oe  = 8'b00000001; // only drive uio_out[0]
 
   // Prevent warnings for unused inputs
   wire _unused = &{ui_in, ena};
